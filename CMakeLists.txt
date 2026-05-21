@@ -15,7 +15,7 @@ else()
 endif()
 
 find_package(Boost REQUIRED COMPONENTS system)
-find_package(redis-plus-plus REQUIRED)
+find_package(Redis++ REQUIRED)
 find_package(GTest REQUIRED)
 
 enable_testing()
