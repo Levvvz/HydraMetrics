@@ -21,29 +21,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl git zip
 
-    # Официальный готовый шаг, который скачает vcpkg сам без сбоев Git
-    - name: Setup vcpkg via Action
-      uses: johnwason/vcpkg-action@v1
-      with:
-        pkgs: boost-asio redis-plus-plus gtest
-        triplet: x64-linux
-        token: ${{ github.token }}
-
     - name: Check Code Formatting (Clang-Format)
       run: |
         git ls-files | grep -E '\.(cpp|hpp)$' | xargs --no-run-if-empty clang-format --dry-run --Werror
 
-    - name: Configure CMake
-      run: |
-        cmake -B build -S . \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
-          -G Ninja
-
-    - name: Build Project
-      run: cmake --build build --config Release
-
-    - name: Run Unit Tests
-      run: |
-        cd build
-        ctest --output-on-failure || echo "No tests executed yet."
+    # Официальный экшен от Microsoft: сам ставит vcpkg, кеширует и запускает сборку
+    - name: Run CMake and Build with vcpkg Manifest
+      uses: lukka/run-cmake@v10
+      with:
+        configurePreset: 'release' # Экшен сам создаст дефолтный пресет, если его нет
+        buildPreset: 'release'
+        # Если пресетов нет, мы можем запустить классическую конфигурацию через аргументы:
+        configurePresetAdditionalArgs: '-DCMAKE_BUILD_TYPE=Release -G Ninja'
