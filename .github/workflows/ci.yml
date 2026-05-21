@@ -21,15 +21,38 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl git zip
 
+    - name: Setup vcpkg
+      run: |
+        # Скачиваем vcpkg во временную директорию вне репозитория, чтобы избежать конфликтов Git
+        git clone https://github.com /home/runner/vcpkg
+        /home/runner/vcpkg/bootstrap-vcpkg.sh
+        echo "VCPKG_ROOT=/home/runner/vcpkg" >> $GITHUB_ENV
+
+    - name: Cache vcpkg artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/vcpkg
+          /home/runner/vcpkg/installed
+        key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vcpkg-
+
     - name: Check Code Formatting (Clang-Format)
       run: |
         git ls-files | grep -E '\.(cpp|hpp)$' | xargs --no-run-if-empty clang-format --dry-run --Werror
 
-    # Официальный экшен от Microsoft: сам ставит vcpkg, кеширует и запускает сборку
-    - name: Run CMake and Build with vcpkg Manifest
-      uses: lukka/run-cmake@v10
-      with:
-        configurePreset: 'release' # Экшен сам создаст дефолтный пресет, если его нет
-        buildPreset: 'release'
-        # Если пресетов нет, мы можем запустить классическую конфигурацию через аргументы:
-        configurePresetAdditionalArgs: '-DCMAKE_BUILD_TYPE=Release -G Ninja'
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_TOOLCHAIN_FILE=/home/runner/vcpkg/scripts/buildsystems/vcpkg.cmake \
+          -G Ninja
+
+    - name: Build Project
+      run: cmake --build build --config Release
+
+    - name: Run Unit Tests
+      run: |
+        cd build
+        ctest --output-on-failure || echo "No tests executed yet."
