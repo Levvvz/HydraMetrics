@@ -7,7 +7,6 @@ AlignConsecutiveDeclarations: false
 AllowShortBlocksOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
 AllowShortLambdasOnASingleLine: All
-BlankLineBeforeGlobals: true
 BreakBeforeBraces: Attach
 ColumnLimit: 120
 ConstructorInitializerIndentWidth: 4
