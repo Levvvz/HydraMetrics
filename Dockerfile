@@ -3,10 +3,8 @@
 # ==============================================================================
 FROM ubuntu:24.04 AS builder
 
-# Исключаем интерактивные диалоги при установке пакетов
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Устанавливаем системные зависимости для компиляции и vcpkg
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -19,30 +17,30 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Настраиваем и собираем vcpkg
+# Скачиваем оригинальный vcpkg от Microsoft в папку /opt/vcpkg
 WORKDIR /opt
-RUN git clone https://github.com/Levvvz/HydraMetrics && \
+RUN git clone https://github.com && \
     ./vcpkg/bootstrap-vcpkg.sh
 
 ENV VCPKG_ROOT=/opt/vcpkg
 
-# Копируем файлы описания проекта и манифест зависимостей
+# Копируем манифесты
 WORKDIR /app
 COPY vcpkg.json ./
 COPY CMakeLists.txt ./
 
-# Конфигурируем зависимости vcpkg заранее для кэширования слоев Docker
+# Скачиваем и компилируем зависимости (Boost, GTest, Redis) в кэш Docker
 RUN cmake -B build -S . \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
     -G Ninja
 
-# Копируем исходный код проекта
+# Копируем локальный исходный код проекта (Docker сам возьмет его из контекста сборки)
 COPY src/ ./src
 COPY tests/ ./tests
 COPY benchmarks/ ./benchmarks
 
-# Финальная сборка бинарного файла в Release режиме с LTO и -O3
+# Финальная компиляция нашего исполняемого файла
 RUN cmake --build build --config Release
 
 # ==============================================================================
@@ -54,17 +52,14 @@ RUN apt-get update && apt-get install -y \
     libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Создаем безопасного не-root пользователя для запуска сервиса
 RUN useradd -m appuser
 USER appuser
 
 WORKDIR /home/appuser/app
 
-# Копируем только готовый скомпилированный исполняемый файл из первой стадии
+# Копируем бинарник. Если таргет в CMake называется иначе, поправим имя позже.
 COPY --from=builder /app/build/src/hydrametrics_server ./
 
-# Сервер слушает входящие метрики на порту 8080
 EXPOSE 8080
 
-# Точка входа для запуска нашего C++ движка
 CMD ["./hydrametrics_server"]
