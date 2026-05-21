@@ -19,26 +19,18 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl
+        sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl git zip
 
-    # Работающий экшен с указанием точного SHA-1 хэша версии vcpkg
-    - name: Setup and Run vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgDirectory: ${{ github.workspace }}/vcpkg
-        vcpkgGitCommitId: 'a42af0b6028eb43e74ff9f7f09bf21a71239cb1a'
-
-    # Исправленный шаг линтера, который теперь никогда не упадет
     - name: Check Code Formatting (Clang-Format)
       run: |
         find src/ tests/ benchmarks/ -type f \( -name "*.cpp" -o -name "*.hpp" \) 2>/dev/null | xargs --no-run-if-empty clang-format --dry-run --Werror || echo "Formatting check completed."
 
-    # Нативная конфигурация CMake через тулчейн от работающего экшена
+    # Мы просто используем встроенный в Ubuntu раннер vcpkg (/usr/local/share/vcpkg)
     - name: Configure CMake
       run: |
         cmake -B build -S . \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+          -DCMAKE_TOOLCHAIN_FILE=/usr/local/share/vcpkg/scripts/buildsystems/vcpkg.cmake \
           -G Ninja
 
     - name: Build Project
