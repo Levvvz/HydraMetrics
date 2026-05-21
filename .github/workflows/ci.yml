@@ -41,7 +41,7 @@ jobs:
 
     - name: Check Code Formatting (Clang-Format)
       run: |
-        find src/ tests/ benchmarks/ -type f \( -name "*.cpp" -o -name "*.hpp" \) | xargs --no-run-if-empty clang-format --dry-run --Werror
+        git ls-files | grep -E '\.(cpp|hpp)$' | xargs --no-run-if-empty clang-format --dry-run --Werror
 
     - name: Configure CMake
       run: |
