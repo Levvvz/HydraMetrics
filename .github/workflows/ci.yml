@@ -21,24 +21,37 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl git zip
 
-    # 1. Официальный шаг от Microsoft: разворачивает vcpkg на уровне ядра ОС
-    - name: Setup vcpkg via Official Action
-      uses: microsoft/vcpkg-action@v1
+    - name: Setup vcpkg via Archive (Bypassing HTTPS Git Clone bug)
+      run: |
+        # Скачиваем стабильный релиз vcpkg архивом, полностью обходя баги git clone
+        curl -sL https://github.com -o vcpkg.tar.gz
+        mkdir -p /home/runner/vcpkg
+        tar -xzf vcpkg.tar.gz -C /home/runner/vcpkg --strip-components=1
+        rm vcpkg.tar.gz
+        
+        # Компилируем сам vcpkg менеджер пакетов
+        /home/runner/vcpkg/bootstrap-vcpkg.sh
+        echo "VCPKG_ROOT=/home/runner/vcpkg" >> $GITHUB_ENV
+
+    - name: Cache vcpkg artifacts
+      uses: actions/cache@v4
       with:
-        directory: ${{ github.workspace }}/vcpkg
-        # Указываем фиксированный коммит, чтобы обойти баг с клонированием master
-        vcpkgGitCommitId: '2024.04.26' 
+        path: |
+          ~/.cache/vcpkg
+          /home/runner/vcpkg/installed
+        key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vcpkg-
 
     - name: Check Code Formatting (Clang-Format)
       run: |
         git ls-files | grep -E '\.(cpp|hpp)$' | xargs --no-run-if-empty clang-format --dry-run --Werror
 
-    # 2. Чистый нативный вызов CMake через абсолютный путь, сгенерированный экшеном
     - name: Configure CMake
       run: |
         cmake -B build -S . \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
+          -DCMAKE_TOOLCHAIN_FILE=/home/runner/vcpkg/scripts/buildsystems/vcpkg.cmake \
           -G Ninja
 
     - name: Build Project
