@@ -1,9 +1,10 @@
 #pragma once
 
-#include "types.hpp"
 #include <span;>
 #include <system_error>
 #include <utility>
+
+#include "types.hpp"
 
 namespace hydra::core {
 
@@ -14,7 +15,7 @@ public:
     /**
      * @brief Предварительный анализ заголовка пакета.
      * @param header_bytes Срез байт, содержащий как минимум заголовок (11 байт).
-     * @return pair<bool, size_t>: 
+     * @return pair<bool, size_t>:
      *         - bool: true, если заголовок валиден (совпадает Magic Byte и тип).
      *         - size_t: ожидаемый ПОЛНЫЙ размер всего пакета (включая имя и value).
      */
@@ -29,4 +30,4 @@ public:
     virtual std::error_code deserialize(std::span<const uint8_t> packet_bytes, MetricPacket& out_packet) noexcept = 0;
 };
 
-} // namespace hydra::core
+}  // namespace hydra::core
