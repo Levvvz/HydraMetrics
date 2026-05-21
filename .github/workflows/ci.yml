@@ -23,19 +23,18 @@ jobs:
 
     - name: Setup vcpkg (Official Microsoft Repository)
       run: |
-        if [ ! -d "$HOME/vcpkg" ]; then
-          # Скачиваем именно менеджер пакетов vcpkg, а не наш код!
-          git clone https://github.com $HOME/vcpkg
-          $HOME/vcpkg/bootstrap-vcpkg.sh
+        if [ ! -d "${{ github.workspace }}/vcpkg" ]; then
+          git clone https://github.com ${{ github.workspace }}/vcpkg
+          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh
         fi
-        echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+        echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
 
     - name: Cache vcpkg artifacts
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/vcpkg
-          ${{ env.VCPKG_ROOT }}/installed
+          ${{ github.workspace }}/vcpkg/installed
         key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
         restore-keys: |
           ${{ runner.os }}-vcpkg-
@@ -48,7 +47,7 @@ jobs:
       run: |
         cmake -B build -S . \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake \
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
           -G Ninja
 
     - name: Build Project
