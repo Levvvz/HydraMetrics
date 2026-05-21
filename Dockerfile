@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 # Настраиваем и собираем vcpkg
 WORKDIR /opt
-RUN git clone https://github.com && \
+RUN git clone https://github.com/Levvvz/HydraMetrics && \
     ./vcpkg/bootstrap-vcpkg.sh
 
 ENV VCPKG_ROOT=/opt/vcpkg

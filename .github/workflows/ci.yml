@@ -24,7 +24,7 @@ jobs:
     - name: Setup vcpkg
       run: |
         if [ ! -d "$HOME/vcpkg" ]; then
-          git clone https://github.com $HOME/vcpkg
+          git clone https://github.com/Levvvz/HydraMetrics $HOME/vcpkg
           $HOME/vcpkg/bootstrap-vcpkg.sh
         fi
         echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
