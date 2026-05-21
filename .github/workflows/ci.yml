@@ -1,0 +1,59 @@
+name: C++ CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl
+
+    - name: Setup vcpkg
+      run: |
+        if [ ! -d "$HOME/vcpkg" ]; then
+          git clone https://github.com $HOME/vcpkg
+          $HOME/vcpkg/bootstrap-vcpkg.sh
+        fi
+        echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
+
+    - name: Cache vcpkg artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/vcpkg
+          ${{ env.VCPKG_ROOT }}/installed
+        key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vcpkg-
+
+    - name: Check Code Formatting (Clang-Format)
+      run: |
+        find src/ tests/ benchmarks/ -name "*.cpp" -o -name "*.hpp" | xargs clang-format --dry-run --Werror
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -S . \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake \
+          -G Ninja
+
+    - name: Build Project
+      run: cmake --build build --config Release
+
+    - name: Run Unit Tests
+      run: |
+        cd build
+        ctest --output-on-failure
