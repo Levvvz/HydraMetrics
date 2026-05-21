@@ -20,7 +20,6 @@ find_package(GTest REQUIRED)
 
 enable_testing()
 
-# папки с кодом и тестами
 add_subdirectory(src)
-# add_subdirectory(tests)
-# add_subdirectory(benchmarks)
+add_subdirectory(tests)
+add_subdirectory(benchmarks)
