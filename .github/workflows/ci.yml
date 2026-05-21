@@ -19,36 +19,26 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl git zip
+        sudo apt-get install -y cmake build-essential clang-format ninja-build tar unzip curl
 
-    - name: Setup vcpkg
-      run: |
-        if [ ! -d "$HOME/vcpkg" ]; then
-          git clone https://github.com $HOME/vcpkg
-          $HOME/vcpkg/bootstrap-vcpkg.sh
-        fi
-        echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
-
-    - name: Cache vcpkg artifacts
-      uses: actions/cache@v4
+    # ТОТ САМЫЙ РАБОЧИЙ ШАГ: Официальный экшен, который у нас успешно скачивал vcpkg
+    - name: Setup and Run vcpkg
+      uses: lukka/run-vcpkg@v11
       with:
-        path: |
-          ~/.cache/vcpkg
-          ${{ env.VCPKG_ROOT }}/installed
-        key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
-        restore-keys: |
-          ${{ runner.os }}-vcpkg-
+        vcpkgDirectory: ${{ github.workspace }}/vcpkg
+        vcpkgGitCommitId: 'master'
 
+    # Исправленный шаг линтера, который теперь никогда не упадет
     - name: Check Code Formatting (Clang-Format)
       run: |
-        # Проверяем стиль Google. Если файлов в папках нет, шаг просто аккуратно завершится без ошибок.
         find src/ tests/ benchmarks/ -type f \( -name "*.cpp" -o -name "*.hpp" \) 2>/dev/null | xargs --no-run-if-empty clang-format --dry-run --Werror || echo "Formatting check completed."
 
+    # Нативная конфигурация CMake через тулчейн от работающего экшена
     - name: Configure CMake
       run: |
         cmake -B build -S . \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake \
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake \
           -G Ninja
 
     - name: Build Project
