@@ -1,0 +1,10 @@
+.git
+.github
+build
+cmake-build-debug
+cmake-build-release
+third_party
+*.o
+*.a
+*.so
+*.log
