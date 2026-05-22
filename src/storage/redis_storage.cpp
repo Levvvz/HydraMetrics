@@ -12,6 +12,8 @@ constexpr const char* GAUGES_HASH_KEY = "hydra:gauges";
 
 }  // namespace
 
+RedisStorage::RedisStorage() = default;
+
 RedisStorage::~RedisStorage() = default;
 
 bool RedisStorage::connect(const std::string& host, int port) noexcept {

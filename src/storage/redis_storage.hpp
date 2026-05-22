@@ -13,7 +13,7 @@ namespace hydra::storage {
 
 class RedisStorage final : public IStorageBackend {
 public:
-    RedisStorage() = default;
+    RedisStorage();
 
     ~RedisStorage() override;
 

@@ -21,6 +21,7 @@ endif()
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Redis++ REQUIRED)
 find_package(GTest REQUIRED)
+find_package(Threads REQUIRED)
 
 enable_testing()
 

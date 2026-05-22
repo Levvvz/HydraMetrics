@@ -29,8 +29,25 @@ else()
     message(FATAL_ERROR "Redis++ CMake target was not found")
 endif()
 
-# Новое: Компонент сети (TCP-сервер)
-add_library(hydra_network INTERFACE)
-target_include_directories(hydra_network INTERFACE
+add_library(hydra_network
+    network/tcp_server.cpp
+)
+target_include_directories(hydra_network PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(hydra_network PUBLIC
+    hydra_core
+    Boost::system
+    Threads::Threads
+)
+
+add_executable(hydrametrics_server
+    main.cpp
+)
+target_link_libraries(hydrametrics_server PRIVATE
+    hydra_core
+    hydra_network
+    hydra_storage
+    Boost::system
+    Threads::Threads
 )
