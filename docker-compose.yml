@@ -5,7 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: hydrametrics_app
     depends_on:
-      - hydrametrics-cache
+      hydrametrics-cache:
+        condition: service_healthy
     environment:
       REDIS_HOST: hydrametrics-cache
       REDIS_PORT: "6337"
@@ -30,6 +31,11 @@ services:
       - "no"
     ports:
       - "6337:6337"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6337", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     networks:
       - hydra_network
     restart: unless-stopped
