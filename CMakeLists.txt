@@ -10,7 +10,11 @@ if(MSVC)
 else()
     # Для GCC / Clang:
     add_compile_options(-Wall -Wextra -Werror -Wpedantic)
-    add_compile_options($<$<CONFIG:Release>:-O3 -march=native -flto>)
+    add_compile_options(
+        $<$<CONFIG:Release>:-O3>
+        $<$<CONFIG:Release>:-march=native>
+        $<$<CONFIG:Release>:-flto>
+    )
     add_link_options($<$<CONFIG:Release>:-flto>)
 endif()
 
