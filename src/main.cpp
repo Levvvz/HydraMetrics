@@ -3,6 +3,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -48,7 +49,10 @@ int main() {
 
     const std::string redis_host = get_env_string("REDIS_HOST", "127.0.0.1");
     const int redis_port = get_env_int("REDIS_PORT", 6337);
-    storage.connect(redis_host, redis_port);
+    if (!storage.connect(redis_host, redis_port)) {
+        std::cerr << "Failed to connect to Redis at " << redis_host << ':' << redis_port << '\n';
+        return 1;
+    }
 
     hydra::storage::FlushWorker flush_worker(aggregator, storage);
     flush_worker.start(std::chrono::milliseconds(1000));

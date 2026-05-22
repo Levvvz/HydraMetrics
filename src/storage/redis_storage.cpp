@@ -2,6 +2,7 @@
 
 #include <sw/redis++/redis++.h>
 
+#include <iostream>
 #include <utility>
 
 namespace hydra::storage {
@@ -27,10 +28,12 @@ bool RedisStorage::connect(const std::string& host, int port) noexcept {
         redis_ = std::move(redis);
 
         return true;
-    } catch (const sw::redis::Error&) {
+    } catch (const sw::redis::Error& error) {
+        std::cerr << "[Redis Error]: " << error.what() << std::endl;
         redis_.reset();
         return false;
     } catch (...) {
+        std::cerr << "[Redis Error]: unexpected failure while connecting" << std::endl;
         redis_.reset();
         return false;
     }
@@ -52,8 +55,10 @@ void RedisStorage::flush_snapshot(const core::MetricSnapshot& snapshot) noexcept
         }
 
         pipeline.exec();
-    } catch (const sw::redis::Error&) {
+    } catch (const sw::redis::Error& error) {
+        std::cerr << "[Redis Error]: " << error.what() << std::endl;
     } catch (...) {
+        std::cerr << "[Redis Error]: unexpected failure while flushing snapshot" << std::endl;
     }
 }
 
