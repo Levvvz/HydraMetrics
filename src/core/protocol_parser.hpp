@@ -1,6 +1,8 @@
 #pragma once
 
-#include <span;>
+#include <cstddef>
+#include <cstdint>
+#include <span>
 #include <system_error>
 #include <utility>
 
@@ -28,6 +30,13 @@ public:
      * @return std::error_code Системный код ошибки. Возвращает default (успех), если пакет распарсен.
      */
     virtual std::error_code deserialize(std::span<const uint8_t> packet_bytes, MetricPacket& out_packet) noexcept = 0;
+};
+
+class ProtocolParser final : public IProtocolParser {
+public:
+    std::pair<bool, size_t> parse_header(std::span<const uint8_t> header_bytes) noexcept override;
+
+    std::error_code deserialize(std::span<const uint8_t> packet_bytes, MetricPacket& out_packet) noexcept override;
 };
 
 }  // namespace hydra::core
