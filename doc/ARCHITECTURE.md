@@ -59,6 +59,9 @@ Invalid packets are reported without C++ exceptions. Parser errors use `std::err
 - `src/network/tcp_server.hpp` defines the concrete Boost.Asio coroutine TCP server.
 - `src/network/tcp_server.cpp` accepts TCP sessions, reads binary packets asynchronously, parses them, and forwards valid metrics to the aggregator.
 - `src/main.cpp` wires parser, aggregator, Redis storage, flush worker, TCP server, and signal handling.
+- `Dockerfile` builds the Release server binary in a multi-stage Ubuntu 24.04 image with vcpkg dependencies.
+- `docker-compose.yml` runs the server with Redis 7 on an internal Docker network.
+- `benchmarks/load_generator.py` sends protocol-correct binary Counter packets over async TCP connections for throughput smoke testing.
 - `parse_header(std::span<const uint8_t>) noexcept` validates the magic byte and metric type, reads the timestamp field, and returns the expected full packet size.
 - `deserialize(std::span<const uint8_t>, MetricPacket&) noexcept` validates the full packet and fills `MetricPacket`.
 - `update_metric(const MetricPacket&) noexcept` updates only the metric's target shard.
@@ -79,6 +82,12 @@ Invalid packets are reported without C++ exceptions. Parser errors use `std::err
 ## 5. Current Phase
 
 Target: integration hardening, end-to-end smoke tests, and benchmark harness.
+
+Operational smoke test path:
+
+- Start Redis and the server with `docker compose up --build`.
+- Run `benchmarks/load_generator.py` against `127.0.0.1:8080`.
+- Inspect Redis hash `hydra:counters` for aggregated counter values.
 
 Parser test coverage:
 
