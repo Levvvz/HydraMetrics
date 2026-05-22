@@ -1,5 +1,6 @@
 # Компонент ядра (Парсер, Агрегатор)
 add_library(hydra_core
+    core/metric_aggregator.cpp
     core/protocol_parser.cpp
 )
 target_include_directories(hydra_core PUBLIC
