@@ -38,7 +38,7 @@ Invalid packets are reported without C++ exceptions. Parser errors use `std::err
 - [x] **Phase 1: Infrastructure & Environment Setup** (CMake, vcpkg manifests, strict CI/CD, Multi-stage Docker).
 - [x] **Phase 2: Architectural Contracts** (`IProtocolParser`, `IMetricAggregator`, `INetworkServer`).
 - [x] **Phase 3: Core Parser Implementation** (`ProtocolParser` implemented, Google Test suite added).
-- [ ] **Phase 4: Component Implementation** (`MetricAggregator` implemented and tested, Redis Async Client and Asio Coroutines pending).
+- [ ] **Phase 4: Component Implementation** (`MetricAggregator`, `RedisStorage`, and `FlushWorker` implemented; Asio Coroutines pending).
 - [ ] **Phase 5: Validation & Testing** (Google Test suites, Concurrency stress tests).
 - [ ] **Phase 6: Verification & Benchmarking** (Resource usage profiling, RPS/Latency percentiles reports).
 
@@ -51,19 +51,27 @@ Invalid packets are reported without C++ exceptions. Parser errors use `std::err
 - `src/core/protocol_parser.cpp` implements header validation and packet deserialization.
 - `src/core/metric_aggregator.hpp` defines the concrete `MetricAggregator`.
 - `src/core/metric_aggregator.cpp` implements 16-shard counter/gauge aggregation with per-shard mutexes.
+- `src/storage/storage_interface.hpp` defines `IStorageBackend`.
+- `src/storage/redis_storage.hpp` defines the concrete Redis-backed storage implementation.
+- `src/storage/redis_storage.cpp` flushes snapshots to Redis hashes with redis-plus-plus pipelining.
+- `src/storage/flush_worker.hpp` defines a C++20 `std::jthread`-based background flush worker.
+- `src/storage/flush_worker.cpp` periodically extracts aggregator snapshots and sends them to storage.
 - `parse_header(std::span<const uint8_t>) noexcept` validates the magic byte and metric type, reads the timestamp field, and returns the expected full packet size.
 - `deserialize(std::span<const uint8_t>, MetricPacket&) noexcept` validates the full packet and fills `MetricPacket`.
 - `update_metric(const MetricPacket&) noexcept` updates only the metric's target shard.
 - `extract_snapshot()` locks all shard mutexes with `std::scoped_lock`, copies all shard data into `MetricSnapshot`, clears counters, and keeps gauges as the latest known values.
+- `RedisStorage::flush_snapshot()` writes counters to `hydra:counters` with `HINCRBYFLOAT` and gauges to `hydra:gauges` with `HSET`.
+- `FlushWorker::start()` runs a cancellable background loop; `FlushWorker::stop()` requests stop, wakes the sleeping worker, and joins it.
 
 ### Build
 
-- `hydra_core` is a compiled CMake library because `ProtocolParser` has a `.cpp` implementation.
+- `hydra_core` is a compiled CMake library because core components have `.cpp` implementations.
+- `hydra_storage` is a compiled CMake library linked against `hydra_core` and redis-plus-plus.
 - `hydra_network`, tests, and benchmarks are still interface/stub targets.
 
 ## 5. Current Phase
 
-Target: implement the Redis flush path and asynchronous network ingestion.
+Target: implement asynchronous network ingestion.
 
 Parser test coverage:
 
