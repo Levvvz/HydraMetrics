@@ -58,7 +58,7 @@ Invalid packets are reported without C++ exceptions. Parser errors use `std::err
 - `src/storage/flush_worker.cpp` periodically extracts aggregator snapshots and sends them to storage.
 - `src/network/tcp_server.hpp` defines the concrete Boost.Asio coroutine TCP server.
 - `src/network/tcp_server.cpp` accepts TCP sessions, reads binary packets asynchronously, parses them, and forwards valid metrics to the aggregator.
-- `src/main.cpp` wires parser, aggregator, Redis storage, flush worker, TCP server, and signal handling.
+- `src/main.cpp` wires parser, aggregator, Redis storage, flush worker, TCP server, signal handling, lifecycle logs, and final shutdown flush.
 - `Dockerfile` builds the Release server binary in a multi-stage Ubuntu 24.04 image with vcpkg dependencies.
 - `docker-compose.yml` runs the server with Redis 7 on an internal Docker network.
 - `benchmarks/load_generator.py` sends protocol-correct binary Counter packets over async TCP connections for throughput smoke testing.
@@ -70,6 +70,7 @@ Invalid packets are reported without C++ exceptions. Parser errors use `std::err
 - `FlushWorker::start()` runs a cancellable background loop; `FlushWorker::stop()` requests stop, wakes the sleeping worker, and joins it.
 - `TcpServer::start()` creates an `io_context`, runs it on a Boost.Asio thread pool, and starts a coroutine listener.
 - `TcpServer::stop()` closes the acceptor, stops the `io_context`, and joins the thread pool.
+- On `SIGINT`/`SIGTERM`, `main.cpp` stops the worker and performs a final `extract_snapshot()` + `flush_snapshot()` before exit.
 
 ### Build
 

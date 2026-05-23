@@ -43,6 +43,8 @@ int get_env_int(const char* name, int fallback) {
 }  // namespace
 
 int main() {
+    std::cout << "[Server]: Initializing HydraMetrics engine..." << std::endl;
+
     hydra::core::ProtocolParser parser;
     hydra::core::MetricAggregator aggregator;
     hydra::storage::RedisStorage storage;
@@ -50,7 +52,8 @@ int main() {
     const std::string redis_host = get_env_string("REDIS_HOST", "127.0.0.1");
     const int redis_port = get_env_int("REDIS_PORT", 6337);
     if (!storage.connect(redis_host, redis_port)) {
-        std::cerr << "Failed to connect to Redis at " << redis_host << ':' << redis_port << '\n';
+        std::cerr << "[Fatal]: Failed to connect to Redis storage at [" << redis_host << ':' << redis_port << "]."
+                  << std::endl;
         return 1;
     }
 
@@ -71,6 +74,10 @@ int main() {
     signals.async_wait([&](const boost::system::error_code&, int) {
         server.stop();
         flush_worker.stop();
+        std::cout << "[Server]: Stopping background worker and performing final memory-to-db flush..." << std::endl;
+        auto final_snapshot = aggregator.extract_snapshot();
+        storage.flush_snapshot(final_snapshot);
+        std::cout << "[Server]: Final flush completed. Goodbye." << std::endl;
         signal_context.stop();
     });
 
