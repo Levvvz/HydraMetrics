@@ -82,5 +82,55 @@ TEST(ProtocolParserTest, DeserializeCorruptedPacket) {
     EXPECT_EQ(error, std::make_error_code(std::errc::bad_message));
 }
 
+TEST(ProtocolParserTest, DeserializeEmptyNameBoundary) {
+    ProtocolParser parser;
+    MetricPacket packet;
+    const std::vector<uint8_t> packet_bytes = {
+        0x48, 0x01,                                     // Magic, Counter
+        0x00, 0x00, 0x00, 0x00,                         // Timestamp
+        0x00, 0x00, 0x00, 0x01, 0x00,                   // Timestamp, Empty name length
+        0x3f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // 1.0, big-endian IEEE-754
+    };
+
+    const std::error_code error = parser.deserialize(packet_bytes, packet);
+
+    EXPECT_EQ(error, std::error_code{});
+    EXPECT_EQ(packet.type, MetricType::Counter);
+    EXPECT_EQ(packet.timestamp, 1ULL);
+    EXPECT_TRUE(packet.name.empty());
+    EXPECT_DOUBLE_EQ(packet.value, 1.0);
+}
+
+TEST(ProtocolParserTest, DeserializeMaxNameBoundary) {
+    ProtocolParser parser;
+    MetricPacket packet;
+    std::vector<uint8_t> packet_bytes = {
+        0x48, 0x02,                   // Magic, Gauge
+        0x00, 0x00, 0x00, 0x00,       // Timestamp
+        0x00, 0x00, 0x00, 0x02, 0xff  // Timestamp, Max name length
+    };
+    const std::string expected_name(255, 'A');
+    packet_bytes.insert(packet_bytes.end(), expected_name.begin(), expected_name.end());
+    packet_bytes.insert(packet_bytes.end(), {
+                                                0x40,
+                                                0x09,
+                                                0x21,
+                                                0xfb,
+                                                0x54,
+                                                0x44,
+                                                0x2d,
+                                                0x18,
+                                            });
+
+    const std::error_code error = parser.deserialize(packet_bytes, packet);
+
+    EXPECT_EQ(error, std::error_code{});
+    EXPECT_EQ(packet.type, MetricType::Gauge);
+    EXPECT_EQ(packet.timestamp, 2ULL);
+    EXPECT_EQ(packet.name.size(), 255U);
+    EXPECT_EQ(packet.name, expected_name);
+    EXPECT_DOUBLE_EQ(packet.value, 3.141592653589793);
+}
+
 }  // namespace
 }  // namespace hydra::core
