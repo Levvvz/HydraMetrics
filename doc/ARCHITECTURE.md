@@ -1,111 +1,173 @@
 # HydraMetrics Architecture & Project Plan
 
-## 1. Project Goal ("North Star")
+## 1. Project Goal
 
-HydraMetrics is an ultra-high-performance, asynchronous metric aggregation engine written in Modern C++20. It is designed to act as an ingestion gateway for massive streams of telemetry data (telemetry buffer).
+HydraMetrics is a high-performance asynchronous telemetry ingestion gateway written in Modern C++20. It accepts binary metrics over raw TCP, aggregates counters and gauges in memory, and periodically flushes aggregated snapshots to Redis.
 
-- **Input Data:** Binary metric packets (Counters and Gauges).
-- **Protocol:** Custom binary wire protocol over raw TCP.
-- **Core Logic:** Real-time lock-free aggregation and bucketing in memory.
-- **Storage:** Asynchronous write-behind flushing to Redis via pipelining.
-- **Output Access:** Downstream services read aggregated data directly from Redis.
-- **MVP Criteria:** Accept 1M+ RPS of binary packets over TCP, aggregate counters/gauges in memory without blocking network threads, and flush chunks to Redis every 1000ms.
+- **Input:** Custom binary metric packets over TCP.
+- **Protocol:** Fixed binary header plus variable metric name and 8-byte IEEE-754 value.
+- **Core:** Sharded in-memory aggregation with per-shard mutexes.
+- **Storage:** Redis hashes updated through redis-plus-plus pipelining.
+- **Runtime:** Boost.Asio coroutine TCP server, background flush worker, graceful shutdown with final flush.
+- **Deployment:** Docker Compose stack with the C++ server and Redis 7.
 
-## 2. Binary Wire Protocol Specification
+## 2. Binary Wire Protocol
 
-Each metric packet follows this layout:
+Each packet follows this layout:
 
 ```text
-[Magic Byte: 0x48 (1b)]
-[Metric Type (1b)]
-[Timestamp (8b, unsigned integer, big-endian)]
-[Name Length (1b)]
-[Metric Name (variable, raw bytes)]
-[Value (8b, IEEE-754 double payload, big-endian)]
+[Magic Byte: 0x48 (1 byte)]
+[Metric Type: 0x01 Counter or 0x02 Gauge (1 byte)]
+[Timestamp: unsigned integer, Big-Endian (8 bytes)]
+[Name Length (1 byte)]
+[Metric Name (variable raw bytes)]
+[Value: IEEE-754 double payload, Big-Endian (8 bytes)]
 ```
 
-- **Metric Types:** `0x01` (Counter), `0x02` (Gauge).
 - **Header Size:** 11 bytes.
-- **Minimum Packet Size:** 20 bytes (with a 1-byte metric name).
 - **Expected Full Size:** `11 + name_length + 8`.
-- **Endianness:** Multi-byte fields are encoded in big-endian network byte order.
-- **Value Encoding:** `Value` is encoded as the 8-byte IEEE-754 binary64 representation of `double`, transported as a big-endian `uint64_t` payload and converted back with `std::bit_cast<double>`.
+- **Integer Endianness:** Big-Endian network byte order.
+- **Double Encoding:** The 8-byte payload is read as a Big-Endian `uint64_t` and reconstructed with `std::bit_cast<double>`.
+- **Invalid Packets:** Parser returns `std::errc::bad_message` via `std::error_code`; parsing methods do not throw outward.
 
-Invalid packets are reported without C++ exceptions. Parser errors use `std::error_code` with `std::errc::bad_message`.
+## 3. Runtime Data Flow
 
-## 3. High-Level Modular Roadmap & Status
+```text
+TCP client
+  -> Boost.Asio coroutine session
+  -> ProtocolParser
+  -> MetricAggregator
+  -> FlushWorker
+  -> RedisStorage
+  -> Redis hashes
+```
 
-- [x] **Phase 1: Infrastructure & Environment Setup** (CMake, vcpkg manifests, strict CI/CD, Multi-stage Docker).
-- [x] **Phase 2: Architectural Contracts** (`IProtocolParser`, `IMetricAggregator`, `INetworkServer`).
-- [x] **Phase 3: Core Parser Implementation** (`ProtocolParser` implemented, Google Test suite added).
-- [ ] **Phase 4: Component Implementation** (`MetricAggregator`, `RedisStorage`, `FlushWorker`, and coroutine TCP server implemented; integration hardening pending).
-- [ ] **Phase 5: Validation & Testing** (Google Test suites, Concurrency stress tests).
-- [ ] **Phase 6: Verification & Benchmarking** (Resource usage profiling, RPS/Latency percentiles reports).
+Redis keys:
 
-## 4. Current Implementation Snapshot
+- `hydra:counters`: updated with `HINCRBYFLOAT`.
+- `hydra:gauges`: updated with `HSET`.
+
+Shutdown path:
+
+- `SIGINT` or `SIGTERM` stops the TCP server.
+- `FlushWorker` is stopped and joined.
+- `main.cpp` performs a final `extract_snapshot()` + `flush_snapshot()` before process exit.
+
+## 4. Components
 
 ### Core
 
-- `src/core/types.hpp` owns the shared protocol constants, `MetricType`, and `MetricPacket`.
-- `src/core/protocol_parser.hpp` defines `IProtocolParser` and the concrete `ProtocolParser`.
-- `src/core/protocol_parser.cpp` implements header validation and packet deserialization.
-- `src/core/metric_aggregator.hpp` defines the concrete `MetricAggregator`.
-- `src/core/metric_aggregator.cpp` implements 16-shard counter/gauge aggregation with per-shard mutexes.
-- `src/storage/storage_interface.hpp` defines `IStorageBackend`.
-- `src/storage/redis_storage.hpp` defines the concrete Redis-backed storage implementation.
-- `src/storage/redis_storage.cpp` flushes snapshots to Redis hashes with redis-plus-plus pipelining.
-- `src/storage/flush_worker.hpp` defines a C++20 `std::jthread`-based background flush worker.
-- `src/storage/flush_worker.cpp` periodically extracts aggregator snapshots and sends them to storage.
-- `src/network/tcp_server.hpp` defines the concrete Boost.Asio coroutine TCP server.
-- `src/network/tcp_server.cpp` accepts TCP sessions, reads binary packets asynchronously, parses them, and forwards valid metrics to the aggregator.
-- `src/main.cpp` wires parser, aggregator, Redis storage, flush worker, TCP server, and signal handling.
-- `Dockerfile` builds the Release server binary in a multi-stage Ubuntu 24.04 image with vcpkg dependencies.
-- `docker-compose.yml` runs the server with Redis 7 on an internal Docker network.
-- `benchmarks/load_generator.py` sends protocol-correct binary Counter packets over async TCP connections for throughput smoke testing.
-- `parse_header(std::span<const uint8_t>) noexcept` validates the magic byte and metric type, reads the timestamp field, and returns the expected full packet size.
-- `deserialize(std::span<const uint8_t>, MetricPacket&) noexcept` validates the full packet and fills `MetricPacket`.
-- `update_metric(const MetricPacket&) noexcept` updates only the metric's target shard.
-- `extract_snapshot()` locks all shard mutexes with `std::scoped_lock`, copies all shard data into `MetricSnapshot`, clears counters, and keeps gauges as the latest known values.
-- `RedisStorage::flush_snapshot()` writes counters to `hydra:counters` with `HINCRBYFLOAT` and gauges to `hydra:gauges` with `HSET`.
-- `FlushWorker::start()` runs a cancellable background loop; `FlushWorker::stop()` requests stop, wakes the sleeping worker, and joins it.
-- `TcpServer::start()` creates an `io_context`, runs it on a Boost.Asio thread pool, and starts a coroutine listener.
-- `TcpServer::stop()` closes the acceptor, stops the `io_context`, and joins the thread pool.
+- `src/core/types.hpp`
+  Defines `MetricType`, `ProtocolConstants`, and `MetricPacket`.
+- `src/core/protocol_parser.hpp/.cpp`
+  Implements `ProtocolParser`, header validation, Big-Endian timestamp parsing, Big-Endian double reconstruction, and full packet deserialization.
+- `src/core/aggregator_interface.hpp`
+  Defines `IMetricAggregator` and `MetricSnapshot`.
+- `src/core/metric_aggregator.hpp/.cpp`
+  Implements `MetricAggregator` with 16 shards. Each shard owns `counters`, `gauges`, and a mutex. `update_metric()` locks only the target shard. `extract_snapshot()` locks all shard mutexes with `std::scoped_lock`, copies data, clears counters, and keeps gauges.
 
-### Build
+### Storage
 
-- `hydra_core` is a compiled CMake library because core components have `.cpp` implementations.
-- `hydra_storage` is a compiled CMake library linked against `hydra_core` and redis-plus-plus.
-- `hydra_network` is a compiled CMake library linked against `hydra_core` and Boost.System.
-- `hydrametrics_server` is the application executable.
-- Tests and benchmarks are still lightweight/stub targets.
+- `src/storage/storage_interface.hpp`
+  Defines `IStorageBackend`.
+- `src/storage/redis_storage.hpp/.cpp`
+  Implements `RedisStorage` with redis-plus-plus. `connect()` validates Redis with `PING`. `flush_snapshot()` writes counters and gauges through a Redis pipeline. Redis exceptions are logged to `std::cerr`.
+- `src/storage/flush_worker.hpp/.cpp`
+  Implements a C++20 `std::jthread` background worker. It sleeps with `std::condition_variable_any` and `std::stop_token`, extracts snapshots, and flushes them every 1000ms.
 
-## 5. Current Phase
+### Network
 
-Target: integration hardening, end-to-end smoke tests, and benchmark harness.
+- `src/network/server_interface.hpp`
+  Defines `INetworkServer`.
+- `src/network/tcp_server.hpp/.cpp`
+  Implements `TcpServer` using Boost.Asio coroutines. It accepts sockets asynchronously, reads packet headers and bodies with `boost::asio::async_read`, deserializes valid packets, and forwards them to the aggregator.
 
-Operational smoke test path:
+### Application
 
-- Start Redis and the server with `docker compose up --build`.
-- Run `benchmarks/load_generator.py` against `127.0.0.1:8080`.
-- Inspect Redis hash `hydra:counters` for aggregated counter values.
+- `src/main.cpp`
+  Wires all layers through dependency injection, reads runtime configuration from environment variables, starts the flush worker and TCP server, handles `SIGINT`/`SIGTERM`, logs lifecycle events, and performs final flush.
 
-Parser test coverage:
+Runtime environment variables:
 
-- Valid Counter packet.
+- `REDIS_HOST`, default `127.0.0.1`.
+- `REDIS_PORT`, default `6337`.
+- `SERVER_ADDRESS`, default `0.0.0.0`.
+- `SERVER_PORT`, default `8080`.
+
+## 5. Build And Deployment
+
+### CMake Targets
+
+- `hydra_core`: parser and aggregator.
+- `hydra_storage`: Redis storage and flush worker.
+- `hydra_network`: Boost.Asio TCP server.
+- `hydrametrics_server`: final executable.
+- `hydra_core_tests`: Google Test executable for core tests.
+
+### Docker
+
+- `Dockerfile`
+  Multi-stage Ubuntu 24.04 build. The builder stage installs vcpkg dependencies and compiles `hydrametrics_server` in Release mode. The runner stage copies only the final binary and runs it as non-root `appuser`.
+- `docker-compose.yml`
+  Runs `hydrametrics-server` and `hydrametrics-cache`. Redis runs on port `6337` with disk persistence disabled. Redis has a healthcheck (`redis-cli -p 6337 ping`), and the server starts only after Redis is healthy.
+
+## 6. Validation And Benchmarks
+
+### Unit Tests
+
+Parser coverage:
+
+- Valid Counter header.
 - Invalid magic byte.
 - Invalid metric type.
-- Truncated full packet after a valid header.
-- Valid full deserialization with big-endian timestamp and IEEE-754 double payload.
+- Valid full packet deserialization.
+- Corrupted/truncated packet handling.
 
-Aggregator test coverage:
+Aggregator coverage:
 
-- Single-threaded counter accumulation and gauge overwrite.
-- Counter reset after `extract_snapshot()`.
-- Gauge retention after `extract_snapshot()`.
-- Concurrent stress test with 8 threads and 10,000 counter updates per thread.
+- Single-threaded counter accumulation.
+- Gauge overwrite behavior.
+- Counter reset after snapshot extraction.
+- Gauge retention after snapshot extraction.
+- Concurrent stress test with 8 threads and 10,000 updates per thread.
 
-Remaining parser test candidates:
+### E2E Smoke Test
 
-- Valid Gauge packet.
-- Slice smaller than 11-byte header.
-- Name length boundary cases.
+`benchmarks/smoke_test.py` sends 5 valid packets for `smoke_counter`, waits for the flush interval, reads Redis, and expects the counter value to be `5`.
+
+### Load Generator
+
+`benchmarks/load_generator.py` opens async TCP connections and sends protocol-correct Counter packets at high speed.
+
+Detailed benchmark notes are kept in `doc/BENCHMARK.md`.
+
+Measured local Docker run:
+
+- `500,000` packets.
+- `64` async TCP connections.
+- About `295,000` packets per second.
+- Redis value verified as `500000`.
+
+## 7. Current Status
+
+Completed:
+
+- Binary protocol parser.
+- Sharded aggregator.
+- Redis storage with pipelining.
+- Background flush worker.
+- Boost.Asio coroutine TCP server.
+- Application entry point with DI and signal handling.
+- Final flush on shutdown.
+- Dockerfile and Docker Compose stack.
+- Redis healthcheck and startup gating.
+- Unit tests, stress test, smoke test, and load generator.
+- README and architecture documentation.
+
+Remaining hardening candidates:
+
+- Add structured logging instead of raw `std::cout`/`std::cerr`.
+- Add explicit server health endpoint or lightweight TCP health probe.
+- Add Redis reconnect/backoff strategy after startup.
+- Extend the benchmark report with reproducible machine/container details.
+- Pin vcpkg to a known commit for fully reproducible Docker builds.

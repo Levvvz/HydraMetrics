@@ -9,7 +9,7 @@ HydraMetrics is a high-performance asynchronous telemetry ingestion gateway and 
 - **Low-Allocation Byte Parsing:** Validates incoming TCP streams directly from Asio buffers via `std::span` and copies metric names only into the final packet structure.
 - **Cross-Platform Endianness Safety:** Network data uses Big-Endian encoding. Floating-point values are transported as IEEE-754 double payloads and reconstructed with `std::bit_cast<double>`.
 - **Write-Behind Redis Pipelining:** A background `FlushWorker` uses `std::jthread` and `std::condition_variable_any` to batch-upload metrics to Redis every 1000ms.
-- **Graceful Shutdown:** Handles `SIGINT` and `SIGTERM` to stop the TCP server and flush worker cleanly.
+- **Graceful Shutdown With Final Flush:** Handles `SIGINT` and `SIGTERM`, stops the TCP server and background worker, then performs a final memory-to-Redis flush before exit.
 - **Dockerized Runtime:** Docker Compose starts the C++ server and Redis cache, with Redis health checks gating server startup.
 
 ## Performance Snapshot

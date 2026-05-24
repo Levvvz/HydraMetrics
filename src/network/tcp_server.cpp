@@ -8,6 +8,7 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <iostream>
 #include <thread>
 #include <vector>
 
@@ -26,6 +27,10 @@ std::error_code to_std_error_code(const error_code& error) {
     }
 
     return {error.value(), std::system_category()};
+}
+
+void log_start_error(const std::string& address, uint16_t port) {
+    std::cerr << "[Network Error]: Failed to bind or listen on [" << address << ':' << port << "]." << std::endl;
 }
 
 }  // namespace
@@ -60,6 +65,7 @@ std::error_code TcpServer::start(const std::string& address, uint16_t port) {
     const Tcp::endpoint endpoint(listen_address, port);
     acceptor->open(endpoint.protocol(), error);
     if (error) {
+        log_start_error(address, port);
         return to_std_error_code(error);
     }
 
@@ -70,11 +76,13 @@ std::error_code TcpServer::start(const std::string& address, uint16_t port) {
 
     acceptor->bind(endpoint, error);
     if (error) {
+        log_start_error(address, port);
         return to_std_error_code(error);
     }
 
     acceptor->listen(asio::socket_base::max_listen_connections, error);
     if (error) {
+        log_start_error(address, port);
         return to_std_error_code(error);
     }
 
@@ -88,6 +96,8 @@ std::error_code TcpServer::start(const std::string& address, uint16_t port) {
     for (int index = 0; index < thread_count; ++index) {
         asio::post(*thread_pool_, [io_context = io_context_.get()] { io_context->run(); });
     }
+
+    std::cout << "[Network]: Server successfully listening on [" << address << ':' << port << "]." << std::endl;
 
     return {};
 }
